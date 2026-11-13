@@ -1,0 +1,10 @@
+# Environment
+.venv/
+
+# Data (Tatoeba downloads and generated files; rebuild with formatter.corpus, similar, dataset)
+data/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
