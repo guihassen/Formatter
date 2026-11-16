@@ -242,12 +242,17 @@ A segunda rodada ataca os erros que os ditados reais mostraram:
 Os dados já estão gerados. Para treinar, continuando do v1:
 
 ```bash
-systemd-inhibit --what=sleep:idle:handle-lid-switch \
+nice -n 19 systemd-inhibit --what=sleep:idle:handle-lid-switch \
   python -m formatter.train --init models/formatter/best --output models/formatter_v2 --epochs 1 --lr 3e-5
 ```
 
-Leva cerca de 4h30 num notebook sem GPU (i5 de 12ª geração). O `systemd-inhibit` impede que o
-computador suspenda no meio.
+Leva cerca de 4h30 num notebook sem GPU (i5 de 12ª geração).
+
+- O `systemd-inhibit` impede que o computador suspenda no meio.
+- O `nice -n 19` dá prioridade aos outros programas, então dá para usar o PC enquanto treina.
+
+Se o treino parar no meio, rode **o mesmo comando com `--resume`**. Ele continua do último checkpoint,
+salvo a cada 500 passos.
 
 ---
 
