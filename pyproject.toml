@@ -7,7 +7,7 @@ name = "formatter"
 version = "0.1.0"
 description = "Dictation formatter for DronsioFlow"
 requires-python = ">=3.10"
-dependencies = ["pandas", "datasets", "gensim", "transformers"]
+dependencies = ["pandas", "datasets", "gensim", "transformers", "torch", "accelerate", "scikit-learn"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

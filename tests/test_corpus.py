@@ -1,3 +1,5 @@
+"""Testes de formatter/corpus.py: limpeza das frases, agrupamento em textos e geração dos arquivos."""
+
 import json
 import random
 
@@ -21,30 +23,33 @@ from formatter.corpus import MAX_SENTENCES, build, clean_line, make_examples
     ],
 )
 def test_clean_line_keeps_and_normalizes(line, expected):
+    """Frases boas são mantidas e normalizadas ("!" vira ".", espaços extras somem)."""
     assert clean_line(line) == expected
 
 
 @pytest.mark.parametrize(
     "line",
     [
-        "Não sei.",  # too short
-        " ".join(["palavra"] * 41) + ".",  # too long
+        "Não sei.",  # curta demais
+        " ".join(["palavra"] * 41) + ".",  # longa demais
         "Ela disse: vamos embora.",
         "Ele falou \"oi\" para mim.",
         "Eu (acho) que sim.",
         "Eu vou — talvez — amanhã.",
         "Primeiro isso; depois aquilo.",
-        "Eu vou , sim.",  # lone punctuation
-        "Eu vou sair.,",  # two punctuation marks at the end
-        "eu vou sair.",  # would come back capitalized
+        "Eu vou , sim.",  # pontuação sozinha
+        "Eu vou sair.,",  # dois sinais no fim
+        "eu vou sair.",  # voltaria com maiúscula
     ],
 )
 def test_clean_line_rejects(line):
+    """Frases que o modelo não consegue representar são descartadas (None)."""
     assert clean_line(line) is None
 
 
 @pytest.mark.parametrize("line", ["Eu vou sair amanhã.", "Isso é ótimo!", "Oi, tudo bem com você?"])
 def test_clean_lines_survive_the_round_trip(line):
+    """Toda frase aceita sobrevive à ida e volta extract_tags/apply_tags."""
     from formatter.tags import apply_tags, extract_tags
 
     cleaned = clean_line(line)
@@ -56,12 +61,14 @@ SENTENCES = [f"Frase número {i}." for i in range(50)]
 
 @pytest.mark.parametrize("seed", range(20))
 def test_make_examples_keeps_every_sentence_in_order(seed):
+    """Agrupar não perde nem reordena frases."""
     examples = make_examples(SENTENCES, random.Random(seed))
     assert " ".join(examples) == " ".join(SENTENCES)
 
 
 @pytest.mark.parametrize("seed", range(20))
 def test_make_examples_groups_one_to_max_sentences(seed):
+    """Cada grupo tem de 1 a MAX_SENTENCES frases."""
     examples = make_examples(SENTENCES, random.Random(seed))
     sizes = [example.count("Frase") for example in examples]
     assert all(1 <= size <= MAX_SENTENCES for size in sizes)
@@ -69,19 +76,23 @@ def test_make_examples_groups_one_to_max_sentences(seed):
 
 
 def test_make_examples_uses_different_sizes():
+    """Os grupos têm tamanhos variados."""
     examples = make_examples(SENTENCES, random.Random(0))
     assert len({example.count("Frase") for example in examples}) > 1
 
 
 def test_make_examples_same_seed_gives_same_result():
+    """Mesma semente, mesmos grupos."""
     assert make_examples(SENTENCES, random.Random(3)) == make_examples(SENTENCES, random.Random(3))
 
 
 def test_make_examples_empty():
+    """Sem frases, sem grupos."""
     assert make_examples([], random.Random(0)) == []
 
 
 def test_build_writes_train_and_val(tmp_path, monkeypatch):
+    """build escreve train e val, sem frases repetidas entre os dois."""
     raw = tmp_path / "por_sentences.tsv"
     good = [f"Eu comprei {i} maçãs hoje." for i in range(100)]
     bad = ["Não sei.", "Ela disse: vamos embora."]
@@ -97,9 +108,9 @@ def test_build_writes_train_and_val(tmp_path, monkeypatch):
         assert rows[name], f"{name} is empty"
         assert all(row["language"] == "pt" for row in rows[name])
 
-    # Every good sentence ends up in exactly one split, and no bad one gets in.
+    # Toda frase boa vai para exatamente uma divisão, e nenhuma ruim entra.
     text = " ".join(row["text"] for split in rows.values() for row in split)
     assert all(text.count(s) == 1 for s in good)
     assert "Não sei." not in text and "disse:" not in text
-    # Accents are written as-is, not as \u escapes.
+    # Os acentos são gravados como estão, não como \u.
     assert "maçãs" in (tmp_path / "train_pt.jsonl").read_text(encoding="utf-8")
