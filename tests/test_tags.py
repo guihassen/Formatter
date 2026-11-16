@@ -1,3 +1,5 @@
+"""Testes de formatter/tags.py: montagem do texto, extração das etiquetas e a ida e volta entre os dois."""
+
 import pytest
 
 from formatter.tags import apply_tags, extract_tags
@@ -15,9 +17,9 @@ N, C, P, Q = "NONE", "COMMA", "PERIOD", "QUESTION"
         ("abri o DronsioFlow", [K, K, K], [N, N, P], "Abri o DronsioFlow."),
         ("água gelada", [K, K], [N, N], "Água gelada"),
         ("oi tudo bem", [K, K, K], [C, N, Q], "Oi, tudo bem?"),
-        # A deleted token drops its punctuation.
+        # Uma palavra apagada perde a sua pontuação.
         ("vou tipo sair", [K, D, K], [N, C, N], "Vou sair"),
-        # Capitalization skips deleted tokens.
+        # A maiúscula pula as palavras apagadas.
         ("tipo vou sair", [D, K, K], [N, N, P], "Vou sair."),
         ("vou sair tipo depois", [K, K, D, K], [N, P, N, P], "Vou sair. Depois."),
         ("tipo né", [D, D], [N, N], ""),
@@ -25,6 +27,7 @@ N, C, P, Q = "NONE", "COMMA", "PERIOD", "QUESTION"
     ],
 )
 def test_apply_tags(text, actions, puncts, expected):
+    """apply_tags monta o texto certo: pula DELETE, cola a pontuação e põe as maiúsculas."""
     assert apply_tags(text.split(), actions, puncts) == expected
 
 
@@ -37,11 +40,13 @@ def test_apply_tags(text, actions, puncts, expected):
     ],
 )
 def test_rejects_different_lengths(tokens, actions, puncts):
+    """Listas de tamanhos diferentes são um erro (ValueError)."""
     with pytest.raises(ValueError):
         apply_tags(tokens, actions, puncts)
 
 
 def test_does_not_change_the_input_lists():
+    """apply_tags não altera as listas que recebe."""
     tokens, actions, puncts = ["oi", "tipo"], [K, D], [N, N]
     apply_tags(tokens, actions, puncts)
     assert (tokens, actions, puncts) == (["oi", "tipo"], [K, D], [N, N])
@@ -54,16 +59,17 @@ def test_does_not_change_the_input_lists():
         ("Oi, tudo bem?", ["oi", "tudo", "bem"], [C, N, Q]),
         ("Vou sair. Depois eu ligo.", ["vou", "sair", "depois", "eu", "ligo"], [N, P, N, N, P]),
         ("Abri o DronsioFlow", ["abri", "o", "DronsioFlow"], [N, N, N]),
-        # Punctuation inside a token stays.
+        # Pontuação no meio da palavra fica.
         ("Versão 3.5 saiu.", ["versão", "3.5", "saiu"], [N, N, P]),
         ("Água gelada", ["água", "gelada"], [N, N]),
-        # Only the first letter is lowercased.
+        # Só a primeira letra vira minúscula.
         ("DronsioFlow abriu.", ["dronsioFlow", "abriu"], [N, P]),
         ("Oi,  tudo bem?", ["oi", "tudo", "bem"], [C, N, Q]),
         ("", [], []),
     ],
 )
 def test_extract_tags(text, tokens, puncts):
+    """extract_tags separa palavras, pontuação e minúsculas do começo de frase."""
     assert extract_tags(text) == (tokens, [K] * len(tokens), puncts)
 
 
@@ -79,4 +85,5 @@ def test_extract_tags(text, tokens, puncts):
     ],
 )
 def test_extract_then_apply_returns_the_same_text(text):
+    """Ida e volta: apply_tags(*extract_tags(texto)) devolve o mesmo texto."""
     assert apply_tags(*extract_tags(text)) == text

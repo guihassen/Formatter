@@ -1,3 +1,10 @@
+"""Treina um Word2Vec e guarda, para cada palavra, uma lista de palavras parecidas.
+
+As parecidas alimentam o aumento de dados: "quarta" -> "terça" para gerar correções como
+"terça não quarta". Filtros evitam pares inúteis (palavras curtas, hesitações, gatilhos, palavras com
+o mesmo começo). Rode com: python -m formatter.similar
+"""
+
 import pandas as pd
 from pathlib import Path
 from gensim.models import Word2Vec
@@ -11,6 +18,7 @@ TOP_N = 5
 MIN_SIMILARITY = 0.5
 
 def read_sentences(path) -> list[list[str]] :
+    """Lê um arquivo de textos e devolve cada texto como uma lista de palavras minúsculas, sem pontuação."""
     df = pd.read_json(path, lines=True)
 
     sentences = []
@@ -30,6 +38,7 @@ def read_sentences(path) -> list[list[str]] :
 
 
 def train(sentences: list[list[str]]) -> Word2Vec :
+    """Treina o Word2Vec com sementes fixas e uma só thread, para o resultado ser sempre o mesmo."""
     model = Word2Vec(
         sentences=sentences,
         vector_size=VECTOR_SIZE,
@@ -44,6 +53,7 @@ def train(sentences: list[list[str]]) -> Word2Vec :
 
 
 def blocked_words(language: str) -> set[str] :
+    """Palavras que nunca entram como parecidas: hesitações e cada palavra dos gatilhos de correção."""
     
     blocked = set()
 
@@ -58,6 +68,11 @@ def blocked_words(language: str) -> set[str] :
 
 
 def build_similar(model: Word2Vec, language: str) -> dict[str, list[str]] :
+    """Monta o dicionário palavra -> até TOP_N parecidas, aplicando todos os filtros.
+
+    Uma parecida precisa ter similaridade de pelo menos MIN_SIMILARITY, não estar bloqueada e não
+    começar com as mesmas 4 letras (para evitar "compra"/"comprar").
+    """
     similar = {}
     blocked = blocked_words(language)
 
@@ -82,11 +97,13 @@ def build_similar(model: Word2Vec, language: str) -> dict[str, list[str]] :
     return similar
 
 def save_similar(similar: dict[str, list[str]], path: Path) -> None :
+    """Salva o dicionário de parecidas em JSON legível."""
     with open(path, "w", encoding="utf-8") as f :
         json.dump(similar, f, ensure_ascii=False, indent=1)
 
 
 def load_similar(language: str) -> dict[str, list[str]] :
+    """Carrega o dicionário de parecidas de um idioma, salvo por save_similar."""
     path =  PROCESSED_DIR / f"similar_{language}.json"
 
     with open(path, "r", encoding="utf-8") as f:
