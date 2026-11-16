@@ -13,7 +13,7 @@ LANGUAGES = ["pt", "en"]
 LABELS = ["KEEP_NONE", "KEEP_COMMA", "KEEP_PERIOD", "KEEP_QUESTION", "DELETE"]
 LABEL2ID = {label: i for i, label in enumerate(LABELS)}
 ID2LABEL = {i: label for i, label in enumerate(LABELS)}
-MAX_LENGTH = 256   
+MAX_LENGTH = 128
 IGNORE = -100      
 
 
