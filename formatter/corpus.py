@@ -1,3 +1,10 @@
+"""Monta o corpus de textos limpos a partir das frases do Tatoeba.
+
+Lê os arquivos de frases em português e inglês, descarta as que o formatador não consegue
+representar, separa treino e validação e junta as frases em textos de 1 a MAX_SENTENCES frases,
+parecidos com um ditado. Rode com: python -m formatter.corpus
+"""
+
 import csv
 import json
 import random
@@ -14,16 +21,23 @@ PROCESSED_DIR = Path("data/processed")
 VAL_FRACTION = 0.05
 MIN_WORDS = 3
 MAX_WORDS = 40
-MAX_SENTENCES = 4
+MAX_SENTENCES = 6
 
 
 def read_tatoeba(path: Path) -> list[str] :
+    """Lê um arquivo do Tatoeba (id, idioma, texto separados por tab) e devolve só os textos."""
     df = pd.read_csv(path, sep="\t", header=None, quoting=csv.QUOTE_NONE)
     text = df[2].to_list()
 
     return text
 
 def clean_line(line: str) -> str | None :
+    """Normaliza uma frase e devolve None se ela não servir para o treino.
+
+    Troca "!" e "..." por ".", descarta frases com símbolos que o modelo não tem (";", ":", aspas,
+    parênteses, travessões), com palavras só de pontuação, curtas ou longas demais, ou que não sobrevivem
+    à ida e volta extract_tags/apply_tags.
+    """
 
     c_line = " ".join(line.split())
 
@@ -56,6 +70,7 @@ def clean_line(line: str) -> str | None :
     
 
 def make_examples(sentences: list[str], rng: random.Random) -> list[str] :
+    """Junta frases em sequência em grupos de 1 a MAX_SENTENCES, mantendo a ordem."""
 
     examples = []
     start = 0
@@ -77,6 +92,11 @@ def make_examples(sentences: list[str], rng: random.Random) -> list[str] :
 
 
 def build(raw_file: Path, language: str, rng: random.Random) -> None :
+    """Gera os arquivos {train|val}_{idioma}.jsonl de um idioma.
+
+    Limpa as frases, separa VAL_FRACTION para validação ANTES de agrupar (assim nenhuma frase aparece
+    nos dois lados) e salva os textos agrupados.
+    """
 
     clean = []
 
@@ -101,7 +121,7 @@ def build(raw_file: Path, language: str, rng: random.Random) -> None :
         corpus = Dataset.from_dict({"text": examples,
                                     "language": [language] * len(examples) })
 
-        # O comando exato que você deve usar:
+        # Um texto por linha (JSON Lines), com acentos escritos como estão.
         corpus.to_json(
             PROCESSED_DIR / f"{file_name}_{language}.jsonl",
             orient="records",
