@@ -1,4 +1,4 @@
-# Transcriptor: formatador de ditado
+# Formatter: formatador de ditado
 
 Um modelo pequeno, que roda em CPU, para limpar o texto que o Whisper transcreve de um ditado. Ele
 apaga hesitações, recomeços e correções, e coloca vírgulas, pontos, interrogações e maiúsculas. Foi
