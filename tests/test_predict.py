@@ -115,6 +115,35 @@ def test_predict_with_confidence_gives_one_margin_per_word(tokenizer):
     assert margins == [1.0, 1.0, 1.0]
 
 
+def logit_row(**scores):
+    """Uma linha de logits com as notas dadas por rótulo (os outros ficam em 0)."""
+    row = torch.zeros(len(LABELS))
+    for label, score in scores.items():
+        row[LABEL2ID[label]] = score
+    return row
+
+
+@pytest.mark.parametrize(
+    "scores, expected",
+    [
+        ({"DELETE": 3.0, "KEEP_NONE": 1.0}, "DELETE"),          # folga 2 >= 1: apaga
+        ({"DELETE": 1.5, "KEEP_COMMA": 1.0}, "KEEP_COMMA"),     # folga 0,5: fica o melhor KEEP_
+        ({"DELETE": 2.0, "KEEP_PERIOD": 1.0}, "DELETE"),        # folga igual ao limite: apaga
+        ({"KEEP_QUESTION": 2.0, "DELETE": 1.9}, "KEEP_QUESTION"),
+    ],
+)
+def test_cautious_argmax_only_deletes_when_sure(scores, expected):
+    """DELETE só vence se passar o melhor KEEP_ por pelo menos DELETE_MARGIN."""
+    winner = predict.cautious_argmax(logit_row(**scores).unsqueeze(0), delete_margin=1.0)
+    assert winner.tolist() == [LABEL2ID[expected]]
+
+
+def test_cautious_argmax_with_zero_margin_is_plain_argmax():
+    """Com limite 0 a regra some e o resultado é o argmax comum."""
+    logits = torch.randn(50, len(LABELS), generator=torch.Generator().manual_seed(0))
+    assert torch.equal(predict.cautious_argmax(logits, delete_margin=0.0), logits.argmax(dim=-1))
+
+
 def test_format_text_of_empty_text_does_not_call_the_model():
     """Texto vazio (ou só pontuação) devolve "" sem chamar o modelo."""
     def explode(*args, **kwargs):

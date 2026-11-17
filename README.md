@@ -10,7 +10,10 @@ Whisper:      ahn eu vou eu vou comprar leite digo vou comprar pão na quarta vo
 Formatador:   Eu vou comprar pão na quarta. Você vem comigo?
 ```
 
-O modelo foi construído à mão, etapa por etapa, como projeto de estudo de Machine Learning.
+![O formatador rodando no terminal: cada ditado cru e, em verde, o texto formatado](docs/demo.gif)
+
+O modelo foi construído à mão, etapa por etapa, como projeto de estudo de Machine Learning. Formata
+um ditado de 60 palavras em cerca de 30 a 50 ms numa CPU de notebook.
 
 ---
 
@@ -182,6 +185,9 @@ Whisper:         "Vou comprar leite, digo, vou comprar pão na quarta! Você vem
 Resultado:       "Vou comprar pão na quarta. Você vem comigo?"
 ```
 
+O modelo só apaga uma palavra quando tem certeza (veja "Só apagar quando tiver certeza" em
+Resultados). Na dúvida, a palavra fica.
+
 Textos longos não cabem de uma vez no modelo (128 peças). Eles são divididos em **janelas que se
 sobrepõem**, e cada palavra recebe o rótulo da janela em que tem pelo menos 15 palavras de contexto dos
 dois lados. Para 150 palavras de 2 peças cada:
@@ -229,7 +235,7 @@ Os erros mais comuns foram:
 - **Apagar enumerações,** como "o preço do arroz, o preço do feijão".
 - **Vírgulas.**
 
-### Versão 2 (aguardando treino)
+### Versão 2 (atual)
 
 A segunda rodada ataca os erros que os ditados reais mostraram:
 
@@ -239,20 +245,69 @@ A segunda rodada ataca os erros que os ditados reais mostraram:
 - **enumerações e "na verdade," que devem ficar;**
 - **exemplos mais longos,** de até 6 frases.
 
-Os dados já estão gerados. Para treinar, continuando do v1:
+O v2 continua do v1 por uma época nos dados novos:
 
 ```bash
 nice -n 19 systemd-inhibit --what=sleep:idle:handle-lid-switch \
   python -m formatter.train --init models/formatter/best --output models/formatter_v2 --epochs 1 --lr 3e-5
 ```
 
-Leva cerca de 4h30 num notebook sem GPU (i5 de 12ª geração).
+Levou cerca de 6 horas num notebook sem GPU (i5 de 12ª geração).
 
 - O `systemd-inhibit` impede que o computador suspenda no meio.
 - O `nice -n 19` dá prioridade aos outros programas, então dá para usar o PC enquanto treina.
 
 Se o treino parar no meio, rode **o mesmo comando com `--resume`**. Ele continua do último checkpoint,
 salvo a cada 500 passos.
+
+#### v1 × v2
+
+Os dois modelos medidos na mesma validação nova (7.103 exemplos, com os padrões da segunda rodada,
+que o v1 nunca viu):
+
+| | v1 | v2 |
+|---|---|---|
+| F1 macro | 0,840 | **0,921** |
+| F1 de DELETE | 0,890 | **0,982** |
+| F1 de KEEP_COMMA | 0,603 | **0,805** |
+| F1 de KEEP_QUESTION | 0,820 | **0,876** |
+| Palavras reais apagadas | 1,46% | **0,30%** |
+| Recall de DELETE | 85,8% | **97,8%** |
+| Exemplos 100% certos | 47,2% | **66,1%** |
+
+Exemplos (frases simuladas):
+
+| Ditado cru | v1 | v2 |
+|---|---|---|
+| compre o bolo na verdade não compre a torta e leve para a festa | Compre o não compre a torta e leve para a festa. | Compre a torta e leve para a festa. |
+| a reunião vai ser na terça não na quarta às três horas | A reunião vai ser na terça, não na quarta às três horas. | A reunião vai ser na quarta às três horas. |
+| o preço do arroz o preço do feijão e o preço do café subiram | O preço do arroz, o preço do feijão e o preço do café subiram. | igual ao v1 (a enumeração fica) |
+
+#### Só apagar quando tiver certeza
+
+Nos ditados reais, o v2 às vezes apagava **trechos que repetem a estrutura**, mas que são
+conteúdo: "quando eu quero traduzir, quando eu quero falar", "uma feature nova, uma feature mais
+agêntica". Apagar uma palavra real é o pior erro, porque some algo que você disse.
+
+Por isso o `predict.py` só aceita DELETE quando a nota dele passa a do melhor KEEP_ por pelo menos
+`DELETE_MARGIN` (1,0). Se não passar, a palavra fica, com a pontuação do melhor KEEP_. O limite foi
+escolhido testando vários valores:
+
+| Limite | Palavras reais apagadas (validação) | Recall de DELETE (validação) | Palavras apagadas em 96 ditados reais |
+|---|---|---|---|
+| 0 (sem regra) | 0,30% | 97,7% | 159 |
+| **1,0** | **0,18%** | **96,7%** | **121** |
+| 2,0 | 0,11% | 95,3% | 79 |
+| 3,0 | 0,06% | 93,0% | 44 |
+
+- Com 1,0, voltam quase só as palavras que deviam ficar.
+- A partir de 2,0, também voltam hesitações de verdade ("eu eu", "way way").
+
+O preço é que algumas correções com pouca certeza deixam de ser apagadas.
+
+Nos 20 trechos corrigidos à mão, que foram escolhidos onde o **v1** estava menos seguro e corrigidos a
+partir da saída dele, os dois ficam próximos: 88,1% (v1) e 85,9% (v2 com a regra). A amostra é
+pequena (277 palavras) e a maior parte da diferença está nas vírgulas.
 
 ---
 
@@ -306,6 +361,8 @@ formatter/
   ab_eval.py           comparação cega com o DronsioFlow
   pick_corrections.py  trechos para correção à mão e medição
 tests/                 um arquivo de testes para cada módulo
+docs/                  vídeo de demonstração (demo.tape gera o demo.gif com o VHS)
+model_card.md          card do modelo para o Hugging Face
 data/                  dados baixados e gerados (fora do git)
 models/                modelos treinados (fora do git)
 ```
@@ -315,6 +372,12 @@ models/                modelos treinados (fora do git)
 - **Perguntas sem pista no texto.** Em português, "você vem amanhã" pode ser pergunta ou afirmação.
   Na integração, vale manter o "?" que o Whisper já colocou.
 - **Vírgulas** são o rótulo mais fraco, e muitas são opcionais.
+- **Correções curtas com pouco contexto,** como "we should deploy on friday no wait on monday", ainda
+  podem apagar a palavra errada.
+- **Recomeços sem repetição de palavras,** como "the team was going we need to leave now", nem sempre
+  são apagados.
+- **Frases abandonadas no fim do ditado** ("... e aí, porém, não, calma") quase nunca aparecem nos
+  dados de treino, então costumam ficar.
 - **Não há "!", ":" nem ";".** Eles são raros nos dados e quase não aparecem nos ditados.
 - **Erros do Whisper.** O modelo não troca nem corrige palavras: se o Whisper errou uma palavra, ela
   continua errada.
