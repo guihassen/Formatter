@@ -3,7 +3,10 @@
 Parte do Multilingual-MiniLM (ou de um modelo já treinado, com --init), avalia a cada EVAL_STEPS
 passos, para cedo se o F1 macro não melhorar por PATIENCE avaliações e salva o melhor modelo em
 <saída>/best. Rode com: python -m formatter.train [--limit N] [--epochs N] [--init pasta]
-[--output pasta] [--lr taxa]
+[--output pasta] [--lr taxa] [--resume]
+
+Com --resume, um treino interrompido continua do último checkpoint salvo na pasta de saída (perde no
+máximo EVAL_STEPS passos). O comando precisa ser o mesmo da primeira vez, mais o --resume.
 """
 
 import argparse
@@ -14,6 +17,7 @@ from datasets import load_dataset
 from sklearn.metrics import f1_score
 from transformers import (AutoModelForTokenClassification, AutoTokenizer, DataCollatorForTokenClassification,
                           EarlyStoppingCallback, Trainer, TrainingArguments)
+from transformers.trainer_utils import get_last_checkpoint
 
 from formatter.dataset import ID2LABEL, IGNORE, LABEL2ID, PROCESSED_DIR, tokenize_and_align
 
@@ -73,8 +77,20 @@ def compute_metrics(eval_pred) -> dict :
         "delete_recall": float(delete_recall),
     }
 
+def checkpoint_to_resume(output_dir: Path, resume: bool) -> str | None:
+    """O último checkpoint da pasta de saída, se --resume foi pedido e existe algum; senão None."""
+    if not resume:
+        return None
+    last = get_last_checkpoint(str(output_dir)) if output_dir.is_dir() else None
+    if last is None:
+        print(f"Nenhum checkpoint em {output_dir}; começando do início.")
+    else:
+        print(f"Continuando de {last}.")
+    return last
+
+
 def main(limit: int | None, epochs: int, init: str = MODEL_NAME, output_dir: Path = OUTPUT_DIR,
-         learning_rate: float = LEARNING_RATE) -> None:
+         learning_rate: float = LEARNING_RATE, resume: bool = False) -> None:
     """Executa o treino completo: tokeniza os dados, monta o modelo e o Trainer, treina e salva o melhor."""
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME if init == MODEL_NAME else init)
 
@@ -120,7 +136,7 @@ def main(limit: int | None, epochs: int, init: str = MODEL_NAME, output_dir: Pat
         callbacks=[EarlyStoppingCallback(early_stopping_patience=PATIENCE)],
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=checkpoint_to_resume(output_dir, resume))
 
     best = output_dir / "best"
     trainer.save_model(str(best))
@@ -128,14 +144,15 @@ def main(limit: int | None, epochs: int, init: str = MODEL_NAME, output_dir: Pat
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=None, help="use only the first N training examples")
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--init", default=MODEL_NAME, help="model to start from (a folder continues a trained model)")
-    parser.add_argument("--output", type=Path, default=OUTPUT_DIR, help="folder for checkpoints and best/")
-    parser.add_argument("--lr", type=float, default=LEARNING_RATE)
+    parser = argparse.ArgumentParser(description="Treina o formatador de ditado.")
+    parser.add_argument("--limit", type=int, default=None, help="usa só os primeiros N exemplos de treino")
+    parser.add_argument("--epochs", type=int, default=10, help="número de épocas")
+    parser.add_argument("--init", default=MODEL_NAME, help="modelo de partida (uma pasta continua um modelo treinado)")
+    parser.add_argument("--output", type=Path, default=OUTPUT_DIR, help="pasta dos checkpoints e do best/")
+    parser.add_argument("--lr", type=float, default=LEARNING_RATE, help="taxa de aprendizado")
+    parser.add_argument("--resume", action="store_true", help="continua do último checkpoint da pasta de saída")
     options = parser.parse_args()
 
-    main(options.limit, options.epochs, options.init, options.output, options.lr)
+    main(options.limit, options.epochs, options.init, options.output, options.lr, options.resume)
 
 

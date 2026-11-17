@@ -8,12 +8,14 @@ final (apply_tags). Rode com: python -m formatter.predict, e digite ditados no t
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 
-from formatter.dataset import ID2LABEL, MAX_LENGTH
+from formatter.dataset import ID2LABEL, LABEL2ID, MAX_LENGTH
 from formatter.tags import apply_tags, extract_tags
 
-MODEL_DIR = "models/formatter/best"
+MODEL_DIR = "models/formatter_v2/best"
 WINDOW_PIECES = MAX_LENGTH - 2   # espaço reservado para <s> e </s>
 MARGIN_WORDS = 15                # palavras de contexto em cada borda da janela, cujos rótulos não são usados
+DELETE = LABEL2ID["DELETE"]
+DELETE_MARGIN = 1.0              # folga mínima (em logits) do DELETE sobre o melhor KEEP_ para apagar
 
 SENTENCE_END = ".!?…"
 PAUSE = ",;:"
@@ -92,13 +94,29 @@ def predict_with_confidence(tokens: list[str], tokenizer, model) -> tuple[list[s
     return labels, margins
 
 
+def cautious_argmax(logits: torch.Tensor, delete_margin: float | None = None) -> torch.Tensor:
+    """Rótulo de cada peça, mas só apaga quando o modelo tem certeza.
+
+    Se o vencedor é DELETE e a nota dele passa a do melhor KEEP_ por menos de `delete_margin`, fica o
+    melhor KEEP_. Apagar uma palavra real é o erro mais grave, então na dúvida a palavra fica.
+    """
+    margin = DELETE_MARGIN if delete_margin is None else delete_margin
+    winner = torch.argmax(logits, dim=-1)
+    keep = logits.clone()
+    keep[..., DELETE] = float("-inf")
+    best_keep = torch.argmax(keep, dim=-1)
+    gap = logits[..., DELETE] - keep.max(dim=-1).values
+    unsure = (winner == DELETE) & (gap < margin)
+    return torch.where(unsure, best_keep, winner)
+
+
 def predict_window(tokens: list[str], tokenizer, model) -> list[str] :
     """Roda o modelo em um trecho que cabe em MAX_LENGTH peças e lê o rótulo da primeira peça de cada palavra."""
     encoding = tokenizer(tokens, is_split_into_words=True, truncation=True, max_length=MAX_LENGTH, return_tensors="pt")
     with torch.no_grad():
         outputs = model(**encoding)
         logits = outputs.logits
-        piece = torch.argmax(logits, dim=2)
+        piece = cautious_argmax(logits[0]).unsqueeze(0)
         example = piece.tolist()[0]
         top_two = torch.topk(logits[0], 2, dim=1).values
         gaps = (top_two[:, 0] - top_two[:, 1]).tolist()
@@ -156,11 +174,14 @@ def format_text(text: str, tokenizer, model) -> str :
 
 
 if __name__ == "__main__":
+    import sys
+
+    green, reset = ("\033[32m", "\033[0m") if sys.stdout.isatty() else ("", "")
     tokenizer, model = load_model()
-    print("Digite um ditado (linha vazia para sair).")
+    print("Digite um ditado (linha vazia para sair).\n")
 
     while True:
         line = input("> ")
         if not line.strip():
             break
-        print(format_text(line, tokenizer, model))
+        print(f"{green}{format_text(line, tokenizer, model)}{reset}\n")
