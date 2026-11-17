@@ -9,7 +9,7 @@ pytest.importorskip("torch")
 
 from formatter import train as train_module
 from formatter.dataset import IGNORE, LABEL2ID
-from formatter.train import compute_metrics, load_tagged
+from formatter.train import checkpoint_to_resume, compute_metrics, load_tagged
 
 K, C, P, Q, D = (LABEL2ID[name] for name in ["KEEP_NONE", "KEEP_COMMA", "KEEP_PERIOD", "KEEP_QUESTION", "DELETE"])
 
@@ -62,3 +62,22 @@ def test_load_tagged_with_and_without_limit(tmp_path, monkeypatch):
     assert len(load_tagged("val", None)) == 10
     assert load_tagged("val", 3)["tokens"] == [r["tokens"] for r in rows[:3]]
     assert len(load_tagged("val", 100)) == 10
+
+
+def test_checkpoint_to_resume_without_flag_is_none(tmp_path):
+    """Sem --resume, o treino começa do início mesmo que existam checkpoints."""
+    (tmp_path / "checkpoint-500").mkdir()
+    assert checkpoint_to_resume(tmp_path, False) is None
+
+
+def test_checkpoint_to_resume_picks_the_last_one(tmp_path):
+    """Com --resume, usa o checkpoint de maior número."""
+    for step in [500, 1500, 1000]:
+        (tmp_path / f"checkpoint-{step}").mkdir()
+    assert checkpoint_to_resume(tmp_path, True) == str(tmp_path / "checkpoint-1500")
+
+
+def test_checkpoint_to_resume_with_nothing_saved_starts_over(tmp_path):
+    """Com --resume e nenhum checkpoint (ou nem a pasta), começa do início em vez de dar erro."""
+    assert checkpoint_to_resume(tmp_path, True) is None
+    assert checkpoint_to_resume(tmp_path / "nao-existe", True) is None
